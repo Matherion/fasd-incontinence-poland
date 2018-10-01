@@ -283,6 +283,7 @@ incontinencePrevalDiamondPlot <-
                               "Daytime urinary incontinence",
                               "Fecal incontinence",
                               "Occassional incontinence"));
+
 grid.draw(incontinencePrevalDiamondPlot);
 
 
@@ -311,9 +312,11 @@ ggSmallSampleFreqs <- function(data,
                                shape = group,
                                color = group,
                                width = NULL,
-                               scale_color = ggplot2::scale_color_viridis_d(),
-                               scale_shape = ggplot2::scale_shape_manual(values=c("F",
-                                                                                  "M",
+                               scale_color = ggplot2::scale_color_viridis_d(end=.8,
+                                                                            begin=.2),
+                               geom_icons = c("md-man", "md-woman"),
+                               scale_shape = ggplot2::scale_shape_manual(values=c("M",
+                                                                                  "F",
                                                                                   '\uf182',
                                                                                   '\uf183',
                                                                                   '\u26c4',
@@ -354,14 +357,14 @@ ggSmallSampleFreqs <- function(data,
     as.numeric(dat[, group]) +
     scales::rescale(rep(1:width,
                         each=ceiling(nrow(dat)/width))[1:nrow(dat)],
-                    from=-.5,
-                    to=.5);
+                    from=-.2,
+                    to=.2);
 
   xVector <- as.numeric(dat[, group]) +
     dat %>%
     group_by_(group) %>%
     do(xVector = rep(scales::rescale(1:width,
-                                     to=c(-0.3, .3)),
+                                     to=c(-0.2, .2)),
                      each = ceiling(nrow(.)/width))[1:nrow(.)]) %>%
     select(xVector) %>% unlist
 
@@ -372,24 +375,50 @@ ggSmallSampleFreqs <- function(data,
 
   #labelVector <- 
 
-  res <-
-    ggplot2::ggplot(dat,
-                    ggplot2::aes_string(x='xVector',
-                                        y=1,
-                                        group=group,
-                                        color=color,
-                                        shape=shape)) +
-    ggplot2::geom_point(position=ggplot2::position_stack(reverse=TRUE),
-                                                         size=10) +
-    scale_shape +
-    scale_color +
-    ggplot2::theme_minimal(base_size=20) +
-    ggplot2::theme(panel.grid = ggplot2::element_blank(),
-                   axis.text.y = ggplot2::element_blank(),
-                   axis.title = ggplot2::element_blank()) +
-    scale_x_continuous(breaks=seq_along(levels(dat[, group])),
-                       labels=as.character(levels(dat[, group]))) +
-    NULL;
+  if (!is.null(geom_icons)) {
+    if (length(unique(dat[!is.na(dat[, shape]), shape])) > length(geom_icons)) {
+      stop("More categories in ", shape, " than icons specified in 'geom_icons'!");
+    }
+    conversionVector <- sort(unique(dat[!is.na(dat[, shape]), shape]));
+    names(geom_icons) <- conversionVector;
+    dat$geom_icons <- geom_icons[dat[, shape]];
+    res <-
+      ggplot2::ggplot(dat,
+                      ggplot2::aes_string(x='xVector',
+                                          y=1,
+                                          group=group,
+                                          color=color)) +
+      ggimage::geom_icon(position=ggplot2::position_stack(reverse=TRUE),
+                         size=.2,
+                         mapping=aes(image=geom_icons)) +
+      scale_color +
+      ggplot2::theme_minimal(base_size=20) +
+      ggplot2::theme(panel.grid = ggplot2::element_blank(),
+                     axis.text.y = ggplot2::element_blank(),
+                     axis.title = ggplot2::element_blank()) +
+      scale_x_continuous(breaks=seq_along(levels(dat[, group])),
+                         labels=as.character(levels(dat[, group]))) +
+      NULL;
+  } else {
+    res <-
+      ggplot2::ggplot(dat,
+                      ggplot2::aes_string(x='xVector',
+                                          y=1,
+                                          group=group,
+                                          color=color,
+                                          shape=shape)) +
+      ggplot2::geom_point(position=ggplot2::position_stack(reverse=TRUE),
+                                                           size=16) +
+      scale_shape +
+      scale_color +
+      ggplot2::theme_minimal(base_size=20) +
+      ggplot2::theme(panel.grid = ggplot2::element_blank(),
+                     axis.text.y = ggplot2::element_blank(),
+                     axis.title = ggplot2::element_blank()) +
+      scale_x_continuous(breaks=seq_along(levels(dat[, group])),
+                         labels=as.character(levels(dat[, group]))) +
+      NULL;
+  }
 
   return(res);
 
@@ -399,22 +428,24 @@ prevalenceFrequencyPlot <-
   ggSmallSampleFreqs(dat,
                      group='Code_Diagn',
                      color='Incontinence_Overall',
-                     shape='Sex');
+                     shape='Sex',
+                     geom_icons=NULL);
 
 grid.draw(prevalenceFrequencyPlot);
 
 ggplot2::ggsave(file=file.path(outputPath, "figure-1--for-typesetting--prevalence-frequencies.pdf"),
                 plot=prevalenceFrequencyPlot,
-                width=15,
-                height=4);
+                width=12,
+                height=11,
+                units='in');
 
 ggplot2::ggsave(file=file.path(outputPath, "figure-1--for-manuscript-embedding--prevalence-frequencies.png"),
                 plot=prevalenceFrequencyPlot,
-                width=15,
-                height=4,
+                width=12,
+                height=11,
+                units='cm',
                 type="cairo-png");
       
-
 ggSmallSampleFreqs(dat,
                    group='Code_Diagn',
                    color='Incontinence_Overall',
