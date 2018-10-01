@@ -1,0 +1,470 @@
+---
+title: "FASD and incontinence in Poland"
+author: "Sylvia Roozen & Gjalt-Jorn Peters"
+date: "`r format(Sys.time(), '%H:%M:%S on %Y-%m-%d %Z (GMT%z)')`"
+output:
+  html_document:
+    toc: true
+---
+
+# Preparation
+
+## Packages, paths, loading data
+
+```{r setup}
+
+#############################################################################
+### Setup
+#############################################################################
+
+require('userfriendlyscience');
+safeRequire('here');                 ### For easy access of files
+safeRequire('magrittr');             ### For the pipe operator
+
+
+safeRequire('ggplot2');
+safeRequire('viridis');
+safeRequire('ez');
+safeRequire('pander');
+safeRequire('plyr');
+safeRequire('dplyr');
+safeRequire('car');
+safeRequire('grid');
+
+panderOptions('table.split.table', Inf);
+knitr::opts_chunk$set(echo = TRUE);
+
+#############################################################################
+### Set paths
+#############################################################################
+
+dataPath <- here::here('results-data');
+outputPath <- here::here('results-output');
+
+#############################################################################
+### Load data
+#############################################################################
+
+dat <- getData(filename=file.path(dataPath, "Incontinence Study Poland [SR 09.05.2018].sav"),
+               applyRioLabels=FALSE);
+
+```
+
+## Data file specification
+
+```{r data-file-specification}
+
+## We'll have to do this manually.
+categoricalVariables <- c('Living', 
+                          'Q_completed', 
+                          'School',
+                          'School_mother',
+                          'School_father',
+                          'Medication', 
+                          'AgeGroups',
+                          'Sex', 
+                          'FASD', 
+                          'Code_Diagn',
+                          'Incontinence_ALL',                    
+                          'Incontinence_Overall',  
+                          'NE_nocturnal_enuresis', 
+                          'DUI_daytime_urinary_incontinence', 
+                          'FI_fecal_incontinence',   
+                          'Physical_disability_chronis_illness',  
+                          'Q12', 'Q13', 'Q14');
+
+intervalVariables <- c('Age_Years',
+                       'IQ',
+                       'OFC',
+                       'HBD',
+                       'AG',
+                       'Birth_Weight',
+                       'Height_cm',
+                       'Weight_kg',
+                       'computeBMI',
+                       'BMIpercentiles', 
+                       'LUTS_Score');
+
+```
+
+## Data file preprocessing
+
+```{r data-file-preprocessing}
+
+### Set categorical variabels to factors
+dat[, categoricalVariables] <-
+  lapply(dat[, categoricalVariables],
+         function(x) {
+           res <- factor(x,
+                         levels=attr(x, 'labels'),
+                         labels=names(attr(x, 'labels')));
+         });
+
+### Delete two redundant levels from the diagnosis factor
+dat$Code_Diagn <- factor(dat$Code_Diagn);
+
+```
+
+### Number of unique values per variable
+
+```{r unique-values-per-variable}
+
+### number of unique values per variable
+unlist(lapply(dat, function(x) return(length(unique(x)))));
+
+```
+
+# Sample description
+
+```{r sample-description}
+
+# examine(dat$Living, dat$Physical_disability_chronis_illness, dat$Q_completed, dat$School,
+#         dat$School_mother, dat$School_father,
+#         dat$Medication, dat$AgeGroups,
+#         dat$Sex, dat$FASD, dat$Code_Diagn,
+#         stem = FALSE,
+#         extremeValues = FALSE);
+# 
+# examine(dat$Age_Years, dat$IQ,
+#         dat$HBD, dat$AG, dat$OFC,
+#         dat$Birth_Weight, dat$Height_cm,
+#         dat$Weight_kg, dat$computeBMI,
+#         dat$BMIpercentiles,
+#         dat$LUTS_Score,
+#         stem = FALSE,
+#         extremeValues = FALSE);
+# 
+# lapply(dat[, intervalVariables], dataShape);
+# 
+# lapply(dat[, intervalVariables], normalityAssessment);
+# 
+# frequencies(dat$Incontinence_ALL, dat$Incontinence_Overall, dat$NE_nocturnal_enuresis, dat$DUI_daytime_urinary_incontinence, dat$FI_fecal_incontinence, dat$Q12, dat$Q13, dat$Q14,  plot=TRUE);
+
+```
+
+# Research questions
+
+## Incontinence prevalence
+
+```{r incontinence-prevalence}
+
+produceBinomTest <- function(vector, successValue) {
+  if (sum(!is.na(vector)) < 1) {
+    return(NULL);
+  } else {
+    return(binom.test(sum(vector == successValue, na.rm=TRUE),
+                      sum(!is.na(vector)),
+                      p=0));
+  }
+}
+
+cleanBinomtest <- function(x, digits=2) {
+  return(paste0(round(100*x$estimate, digits),
+                "<sub>n/N=", as.character(x$statistic),
+                "/", as.character(x$parameter), "</sub>&nbsp;",
+                formatCI(100*x$conf.int, prefix="(", suffix=")", sep=" to ")));
+}
+
+dat_withoutYoung <- dat[!dat$Age_Years < 4, ];
+
+cat0("\nRemoving ", nrow(dat) - nrow(dat_withoutYoung), " participants who are younger than 4 years; ",
+     "retaining ", nrow(dat_withoutYoung), " participants.\n");
+
+dat_withYoung <- dat;
+dat <- dat_withoutYoung;
+
+incontinencePrevalDf <-
+  t(ddply(dat_withoutYoung, 'Code_Diagn', function(subdataframe) {
+    df1 <- cleanBinomtest(produceBinomTest(subdataframe$Incontinence_Overall, "Yes"));
+    df2 <- cleanBinomtest(produceBinomTest(subdataframe$NE_nocturnal_enuresis, "Yes"));
+    df3 <- cleanBinomtest(produceBinomTest(subdataframe$DUI_daytime_urinary_incontinence, "Yes"));
+    df4 <- cleanBinomtest(produceBinomTest(subdataframe$FI_fecal_incontinence, "Yes"));
+    df5 <- cleanBinomtest(produceBinomTest(subdataframe$Incontinence_ALL, "Yes"));
+    res <- data.frame(cbind(df1, df2, df3, df4, df5));
+    names(res) <- c("Overall incontinence",
+                    "NE",
+                    "DUI",
+                    "FI",
+                    "Occassional incontinence");
+    return(res);
+  })) %>% as.data.frame(stringsAsFactors=FALSE);
+
+incontinencePrevalDf$V6 <-
+  c("FASD",
+    cleanBinomtest(produceBinomTest(dat[dat$FASD=="yes", 'Incontinence_Overall'], "Yes")),
+    cleanBinomtest(produceBinomTest(dat[dat$FASD=="yes", 'NE_nocturnal_enuresis'], "Yes")),
+    cleanBinomtest(produceBinomTest(dat[dat$FASD=="yes", 'DUI_daytime_urinary_incontinence'], "Yes")),
+    cleanBinomtest(produceBinomTest(dat[dat$FASD=="yes", 'FI_fecal_incontinence'], "Yes")),
+    cleanBinomtest(produceBinomTest(dat[dat$FASD=="yes", 'Incontinence_ALL'], "Yes")));
+
+names(incontinencePrevalDf) <- as.character(incontinencePrevalDf[1, ]);
+incontinencePrevalDf <- incontinencePrevalDf[-1, c(6,1:5)];
+
+pander(incontinencePrevalDf);
+
+```
+
+
+```{r incontinence-prevalence-diamond-plots}
+
+incontinencePrevalCIs <-
+  dlply(dat_withoutYoung, 'Code_Diagn', function(subdataframe) {
+    df1 <- unlist(produceBinomTest(subdataframe$Incontinence_Overall, "Yes")[c('estimate', 'conf.int')])[c(2,1,3)];
+    df2 <- unlist(produceBinomTest(subdataframe$NE_nocturnal_enuresis, "Yes")[c('estimate', 'conf.int')])[c(2,1,3)];
+    df3 <- unlist(produceBinomTest(subdataframe$DUI_daytime_urinary_incontinence, "Yes")[c('estimate', 'conf.int')])[c(2,1,3)];
+    df4 <- unlist(produceBinomTest(subdataframe$FI_fecal_incontinence, "Yes")[c('estimate', 'conf.int')])[c(2,1,3)];
+    df5 <- unlist(produceBinomTest(subdataframe$Incontinence_ALL, "Yes")[c('estimate', 'conf.int')])[c(2,1,3)];
+    res <- data.frame(cbind(df1, df2, df3, df4, df5));
+    names(res) <- c("Overall incontinence",
+                    "NE",
+                    "DUI",
+                    "FI",
+                    "Occassional incontinence");
+    return(res);
+  });
+
+incontinencePrevalCIs$FASD <-
+  dlply(dat[, c('FASD',
+                'Incontinence_Overall',
+                'NE_nocturnal_enuresis',
+                'DUI_daytime_urinary_incontinence',
+                'FI_fecal_incontinence',
+                'Incontinence_ALL')],
+        .(FASD),
+        function(subdataframe) {
+          df1 <- unlist(produceBinomTest(subdataframe$Incontinence_Overall, "Yes")[c('estimate', 'conf.int')])[c(2,1,3)];
+          df2 <- unlist(produceBinomTest(subdataframe$NE_nocturnal_enuresis, "Yes")[c('estimate', 'conf.int')])[c(2,1,3)];
+          df3 <- unlist(produceBinomTest(subdataframe$DUI_daytime_urinary_incontinence, "Yes")[c('estimate', 'conf.int')])[c(2,1,3)];
+          df4 <- unlist(produceBinomTest(subdataframe$FI_fecal_incontinence, "Yes")[c('estimate', 'conf.int')])[c(2,1,3)];
+          df5 <- unlist(produceBinomTest(subdataframe$Incontinence_ALL, "Yes")[c('estimate', 'conf.int')])[c(2,1,3)];
+          res <- data.frame(cbind(df1, df2, df3, df4, df5));
+          names(res) <- c("Overall incontinence",
+                          "NE",
+                          "DUI",
+                          "FI",
+                          "Occassional incontinence");
+          return(res);
+        })$yes;
+
+incontinencePrevalCIs <- lapply(incontinencePrevalCIs,
+                                function(x) {
+                                  return(as.data.frame(t(x*100)));
+                                });
+
+incontinencePrevalDiamondPlot <-
+  ggplot() +
+  ggDiamondLayer(incontinencePrevalCIs$FASD,
+                 color=viridis(6)[1],
+                 alpha=.2) +
+  ggDiamondLayer(incontinencePrevalCIs$FAS,
+                 color=viridis(6)[2],
+                 alpha=.2) +
+  ggDiamondLayer(incontinencePrevalCIs$pFAS,
+                 color=viridis(6)[3],
+                 alpha=.2) +
+  ggDiamondLayer(incontinencePrevalCIs$ARND,
+                 color=viridis(6)[4],
+                 alpha=.2) +
+  ggDiamondLayer(incontinencePrevalCIs$GKA,
+                 color=viridis(6)[5],
+                 alpha=.2) +
+  ggDiamondLayer(incontinencePrevalCIs$GKG,
+                 color=viridis(6)[6],
+                 alpha=.2) +
+  coord_cartesian(xlim=c(0,100)) +
+  theme_minimal(base_size=20) +
+  theme(axis.title.y = element_blank(),
+        panel.grid.minor.y=element_blank()) +
+  scale_x_continuous(name="Prevalence",
+                     breaks=seq(0, 100, 10)) +
+  scale_y_continuous(breaks=1:5,
+                     labels=c("Overall incontinence",
+                              "Nocturnal enuresis",
+                              "Daytime urinary incontinence",
+                              "Fecal incontinence",
+                              "Occassional incontinence"));
+grid.draw(incontinencePrevalDiamondPlot);
+
+
+ggplot2::ggsave(file=file.path(outputPath, "figure-2--for-typesetting--prevalence-confidence-intervals.pdf"),
+                plot=incontinencePrevalDiamondPlot,
+                width=10,
+                height=6);
+
+ggplot2::ggsave(file=file.path(outputPath, "figure-2--for-manuscript-embedding--prevalence-confidence-intervals.png"),
+                plot=incontinencePrevalDiamondPlot,
+                width=10,
+                height=6,
+                type="cairo-png");
+
+### Add legend!
+
+```
+
+
+```{r frequencies}
+
+require(emojifont);
+
+ggSmallSampleFreqs <- function(data,
+                               group,
+                               shape = group,
+                               color = group,
+                               width = NULL,
+                               scale_color = ggplot2::scale_color_viridis_d(),
+                               scale_shape = ggplot2::scale_shape_manual(values=c("F",
+                                                                                  "M",
+                                                                                  '\uf182',
+                                                                                  '\uf183',
+                                                                                  '\u26c4',
+                                                                                  '\u26f2',
+                                                                                  '\u2614',
+                                                                                  'A',
+                                                                                  'B'))) {
+
+  ### Select columns and rows to use
+  dat <- data[, c(group, shape, color)];
+  dat <- dat[complete.cases(dat), ];
+
+  ### Sort by category variable
+  dat <- dat[order(dat[, group], dat[, shape], dat[, color]), ];
+
+  ### Set width, if width was not yet set
+  if (is.null(width)) {
+    biggestGroupN <- max(plyr::count(dat[, group])$freq);
+    possibleWidths <- (1:biggestGroupN)[biggestGroupN %% 1:biggestGroupN == 0];
+    sqrtWidth <- sqrt(biggestGroupN);
+    width <- possibleWidths[which(abs(possibleWidths - sqrtWidth) == min(abs(possibleWidths - sqrtWidth)))];
+    if (width == 1) {
+      width <- floor(sqrt(biggestGroupN));
+    }
+  }
+
+  if (!is.factor(dat[, group])) {
+    dat[, group] <- as.factor(dat[, group]);
+  }
+  if (!is.factor(dat[, shape])) {
+    dat[, shape] <- as.factor(dat[, shape]);
+  }
+  if (!is.factor(dat[, color])) {
+    dat[, color] <- as.factor(dat[, color]);
+  }
+
+  xVector <-
+    as.numeric(dat[, group]) +
+    scales::rescale(rep(1:width,
+                        each=ceiling(nrow(dat)/width))[1:nrow(dat)],
+                    from=-.5,
+                    to=.5);
+
+  xVector <- as.numeric(dat[, group]) +
+    dat %>%
+    group_by_(group) %>%
+    do(xVector = rep(scales::rescale(1:width,
+                                     to=c(-0.3, .3)),
+                     each = ceiling(nrow(.)/width))[1:nrow(.)]) %>%
+    select(xVector) %>% unlist
+
+  
+  if (is.null(colors)) {
+    colors <- viridis::viridis(length(unique(dat[, color])));
+  }
+
+  #labelVector <- 
+
+  res <-
+    ggplot2::ggplot(dat,
+                    ggplot2::aes_string(x='xVector',
+                                        y=1,
+                                        group=group,
+                                        color=color,
+                                        shape=shape)) +
+    ggplot2::geom_point(position=ggplot2::position_stack(reverse=TRUE),
+                                                         size=10) +
+    scale_shape +
+    scale_color +
+    ggplot2::theme_minimal(base_size=20) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank(),
+                   axis.text.y = ggplot2::element_blank(),
+                   axis.title = ggplot2::element_blank()) +
+    scale_x_continuous(breaks=seq_along(levels(dat[, group])),
+                       labels=as.character(levels(dat[, group]))) +
+    NULL;
+
+  return(res);
+
+}
+
+prevalenceFrequencyPlot <-
+  ggSmallSampleFreqs(dat,
+                     group='Code_Diagn',
+                     color='Incontinence_Overall',
+                     shape='Sex');
+
+grid.draw(prevalenceFrequencyPlot);
+
+ggplot2::ggsave(file=file.path(outputPath, "figure-1--for-typesetting--prevalence-frequencies.pdf"),
+                plot=prevalenceFrequencyPlot,
+                width=15,
+                height=4);
+
+ggplot2::ggsave(file=file.path(outputPath, "figure-1--for-manuscript-embedding--prevalence-frequencies.png"),
+                plot=prevalenceFrequencyPlot,
+                width=15,
+                height=4,
+                type="cairo-png");
+      
+
+ggSmallSampleFreqs(dat,
+                   group='Code_Diagn',
+                   color='Incontinence_Overall',
+                   shape='Sex',
+                   scale_shape = ggplot2::scale_shape_manual(values=c('\uf182',
+                                                                      '\uf183')));
+
+```
+
+```{r}
+
+### correctie voor multiple testing
+
+pValues <- data.frame(p = c(.258,
+                            .399,
+                            .470,
+                            .034,
+                            .150,
+                            .580,
+                            .125,
+                            .034,
+                            .263,
+                            .000,
+                            .811));
+pValues$names <- c("association between diagnosis and mean weight for age in kg",
+                   "association between diagnosis and mean height for age in cm",
+                   "association between diagnosis and mean BMI",
+                   "association between diagnosis and any type of incontinence",
+                   "association between diagnosis and nocturnal enuresis",
+                   "association between diagnosis and daytime urinary incontinence",
+                   "association between diagnosis and fecal incontinence",
+                   "association between diagnosis and any type of incontinence less frequent",
+                   "association between diagnosis and symptoms of straining",
+                   "association between diagnosis and symptoms of urgency",
+                   "association between diagnosis and symptoms of postponement");
+
+pValues$bonferroni <- p.adjust(pValues$p, method='bonferroni');
+pValues$holm <- p.adjust(pValues$p, method='holm');
+pValues$fdr <- p.adjust(pValues$p, method='fdr');
+
+pander(pValues[, c(2, 1, 3:ncol(pValues))]);
+
+
+```
+
+
+
+
+```{r}
+
+
+
+

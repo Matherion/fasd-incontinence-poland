@@ -1,0 +1,793 @@
+---
+title: "Exploring incontinence problems in children with FASD: a Polish cohort"
+author: "S. Roozen, K. Dylag, K. Przybyszewska, J. Niemczyk, A. von Gontard, G-J. Y. Peters, Kok, and L. Curfs"
+date: "`r format(Sys.time(), '%d %b %Y at %H:%M:%S');`"
+output:
+  html_document: 
+    toc: yes
+    toc_float: true
+    toc_depth: 5
+---
+
+Supplementary file on statistics
+
+
+
+# HEADING
+
+## Inspection of the data 
+
+## Additional: correction for multiple testing
+
+
+
+```{r echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+
+require('userfriendlyscience');
+safeRequire('ez');
+safeRequire('pander');
+safeRequire('plyr');
+safeRequire('car');
+
+panderOptions('table.split.table', Inf);
+
+
+#getDat(filename="B:/Shared/Gjalt-Jorn & Sylvia/Incontinence/Incontinence Study FARR [24.06.2016]_6.sav");
+getDat(filename="C:/Users/sylvia.roozen/Desktop/Sync/Data/Research/FASD/FASD Incontinence/analyses_incontinence_FASD_Polish_cohort_files/Incontinence Study Poland [SR 09.05.2018].sav",
+                 applyRioLabels=FALSE);
+
+```
+
+
+# Inspection of the data
+
+```{r}
+
+### We'll have to do this manually.
+categoricalVariables <- c('Living', 
+                          'Q_completed', 
+                          'School',
+                          'School_mother',
+                          'School_father',
+                          'Medication', 
+                          'AgeGroups',
+                          'Sex', 
+                          'FASD', 
+                          'Code_Diagn',
+                          'Incontinence_ALL',                    
+                          'Incontinence_Overall',  
+                          'NE_nocturnal_enuresis', 
+                          'DUI_daytime_urinary_incontinence', 
+                          'FI_fecal_incontinence',   
+                          'Physical_disability_chronis_illness',  
+                          'Q12', 'Q13', 'Q14');
+
+intervalVariables <- c('Age_Years',
+                       'IQ',
+                       'OFC',
+                       'HBD',
+                       'AG',
+                       'Birth_Weight',
+                       'Height_cm',
+                       'Weight_kg',
+                       'computeBMI',
+                       'BMIpercentiles', 
+                       'LUTS_Score');
+
+### Set categorical variabels to factors
+dat[, categoricalVariables] <-
+  lapply(dat[, categoricalVariables],
+         function(x) {
+           res <- factor(x,
+                         levels=attr(x, 'labels'),
+                         labels=names(attr(x, 'labels')));
+         });
+
+### number of unique values per variable
+unlist(lapply(dat, function(x) return(length(unique(x)))));
+
+
+### general sample characteristics
+
+
+examine(dat$Living, dat$Physical_disability_chronis_illness, dat$Q_completed, dat$School,
+        dat$School_mother, dat$School_father,
+        dat$Medication, dat$AgeGroups,
+        dat$Sex, dat$FASD, dat$Code_Diagn,
+        stem = FALSE,
+        extremeValues = FALSE);
+
+examine(dat$Age_Years, dat$IQ,
+        dat$HBD, dat$AG, dat$OFC,
+        dat$Birth_Weight, dat$Height_cm,
+        dat$Weight_kg, dat$computeBMI,
+        dat$BMIpercentiles,
+        dat$LUTS_Score,
+        stem = FALSE,
+        extremeValues = FALSE);
+
+
+
+# dataShape(dat$Age_Years, dat$IQ, dat$OFC, dat$HBD, dat$AG, dat$Birth_Weight, dat$Height_cm, dat$Weight_kg, dat$computeBMI, dat$BMI_percentile, dat$LUTS_Score);
+
+lapply(dat[, intervalVariables], dataShape);
+
+### Assess normality of sampling distribution of the mean
+lapply(dat[, intervalVariables], normalityAssessment);
+
+
+### incontinence data
+
+frequencies(dat$Incontinence_ALL, dat$Incontinence_Overall, dat$NE_nocturnal_enuresis, dat$DUI_daytime_urinary_incontinence, dat$FI_fecal_incontinence, dat$Q12, dat$Q13, dat$Q14,  plot=TRUE);
+
+
+
+
+```
+
+# 1. What is the prevalence of overall incontinence among individuals (aged 4-19yr) diagnosed within the FASD spectrum in Poland?
+## 1.1-1.3 What is the prevalence of NE, DUI, FI among individuals (aged 4-19yr) diagnosed within the FASD spectrum in Poland?
+
+
+
+```{r}
+ 
+produceBinomTest <- function(vector, successValue) {
+  if (sum(!is.na(vector)) < 1) {
+    return(NULL);
+  } else {
+    return(binom.test(sum(vector == successValue, na.rm=TRUE),
+                      sum(!is.na(vector)),
+                      p=0));
+  }
+}
+
+# ### Replace the 0 with continence in the general population to compare
+prev_Incontinence_All <- produceBinomTest(dat$Incontinence_ALL, "All")
+prev_Incontinence_Overall <- produceBinomTest(dat$Incontinence_Overall, 1);
+prev_Incontinence_NE <- produceBinomTest(dat$NE_nocturnal_enuresis, 1);
+prev_Incontinence_DUI <- produceBinomTest(dat$DUI_daytime_urinary_incontinence, "Yes");
+prev_Incontinence_FI <- produceBinomTest(dat$FI_fecal_incontinence, "Yes");
+
+# prev_Incontinence_All;
+# prev_Incontinence_Overall;
+# rev_Incontinence_NE;
+# prev_Incontinence_DUI;
+# prev_Incontinence_FI;
+
+### per diagnosis
+
+pander(ddply(dat, 'Code_Diagn', function(subdataframe) {
+  df1 <- t(unlist(produceBinomTest(subdataframe$Incontinence_Overall, 1)[c('estimate', 'conf.int')]));
+  df2 <- t(unlist(produceBinomTest(subdataframe$NE_nocturnal_enuresis, 1)[c('estimate', 'conf.int')]));
+  df3 <- t(unlist(produceBinomTest(subdataframe$DUI_daytime_urinary_incontinence, "Yes")[c('estimate', 'conf.int')]));
+  df4 <- t(unlist(produceBinomTest(subdataframe$FI_fecal_incontinence, "Yes")[c('estimate', 'conf.int')]));
+  df5 <- t(unlist(produceBinomTest(subdataframe$Incontinence_ALL, "Yes")[c('estimate', 'conf.int')]));
+  res <- data.frame(cbind(df1, df2, df3, df4, df5));
+  names(res) <- c(paste0('Overall_', c('est', 'lo', 'hi')),
+                  paste0('NE_', c('est', 'lo', 'hi')),
+                  paste0('DUI_', c('est', 'lo', 'hi')),
+                  paste0('FI_', c('est', 'lo', 'hi')),
+                  paste0('ALL_', c('est', 'lo', 'hi')));
+  return(res);
+}));
+
+### overall FASD 
+
+  pander(ddply(dat, 'FASD', function(subdataframe) {
+    df1 <- t(unlist(produceBinomTest(subdataframe$Incontinence_Overall, 1))[c('estimate', 'conf.int')]);
+    df2 <- t(unlist(produceBinomTest(subdataframe$NE_nocturnal_enuresis, 1))[c('estimate', 'conf.int')]);
+    df3 <- t(unlist(produceBinomTest(subdataframe$DUI_daytime_urinary_incontinence, "Yes"))[c('estimate', 'conf.int')]);
+    df4 <- t(unlist(produceBinomTest(subdataframe$FI_fecal_incontinence, "Yes"))[c('estimate', 'conf.int')]);
+    df5 <- t(unlist(produceBinomTest(subdataframe$Incontinence_ALL, 1))[c('estimate', 'conf.int')]);
+    res <- data.frame(cbind(df1, df2, df3, df4, df5));
+    names(res) <- c(paste0('Overall_', c('est', 'lo', 'hi')),
+                    paste0('NE_', c('est', 'lo', 'hi')),
+                    paste0('DUI_', c('est', 'lo', 'hi')),
+                    paste0('FI_', c('est', 'lo', 'hi')),
+                    paste0('ALL_', c('est', 'lo', 'hi')));
+    return(res);
+  }));
+
+
+```
+
+The confidence interval for the prevalence runs from `r  round(prev_Incontinence_Overall$conf.int[1], 2)` to `r  round(prev_Incontinence_Overall$conf.int[2], 2)`, and the point estimate for the prevalence is `r round(prev_Incontinence_Overall$estimate, 2)`.
+
+The confidence interval for the prevalence NE runs from `r  round(prev_Incontinence_NE$conf.int[1], 2)` to `r  round(prev_Incontinence_NE$conf.int[2], 2)`, and the point estimate for the prevalence is `r round(prev_Incontinence_NE$estimate, 2)`.
+
+The confidence interval for the prevalence NE runs from `r  round(prev_Incontinence_DUI$conf.int[1], 2)` to `r  round(prev_Incontinence_DUI$conf.int[2], 2)`, and the point estimate for the prevalence is `r round(prev_Incontinence_DUI$estimate, 2)`.
+
+The confidence interval for the prevalence NE runs from `r  round(prev_Incontinence_FI$conf.int[1], 2)` to `r  round(prev_Incontinence_FI$conf.int[2], 2)`, and the point estimate for the prevalence is `r round(prev_Incontinence_FI$estimate, 2)`.
+
+The confidence interval for the prevalence runs from `r  round(prev_Incontinence_All$conf.int[1], 2)` to `r  round(prev_Incontinence_All$conf.int[2], 2)`, and the point estimate for the prevalence is `r round(prev_Incontinence_All$estimate, 2)`.
+
+
+
+# 2. What is the prevalence of overall incontinence_ALL (< once a month) among individuals (aged 4-19yr) diagnosed withing the FASD spectrum in Poland?
+
+
+```{r}
+
+### Prevalence all Incontinence_All 
+
+binom.test(sum(dat$Incontinence_ALL == 1), nrow(dat), p=0);
+prev_Incontinence_ALL <- binom.test(sum(dat$Incontinence_ALL == 1), nrow(dat), p=0);
+
+pander(prev_Incontinence_ALL);
+
+
+
+```
+
+# 3. What is the prevalence of specific symptoms among individuals (aged 4-19yr) diagnosed withing the FASD spectrum in Poland?
+
+
+```{r}
+
+### Prevalence specific symptoms, questionnaire items Q12, Q13, Q14
+## Error omdat hij de missing values niet leest?
+
+binom.test(sum(dat$Q12[complete.cases(dat$Q12)] < 3), nrow(dat), p=0);
+binom.test(sum(dat$Q13[complete.cases(dat$Q13)] < 3), nrow(dat), p=0);
+binom.test(sum(dat$Q14[complete.cases(dat$Q14)] < 3), nrow(dat), p=0);
+
+
+### Specific symptoms are not frequently present in children with FASD. Due to small 'n' it is not possible to calculate prevalence.
+
+# dat$fasd_diagnosis <- factor(dat$FASD_diagn, levels=1:3, labels=names(rev(attr(dat$FASD_diagn, 'value.labels'))));
+# 
+# 
+# ### To check
+#   dat[, c('FASD_diagn', 'fasd_diagnosis')];
+#   
+#   pander(ddply(dat, 'fasd_diagnosis', function(subdataframe) {
+#     df1 <- t(unlist(binom.test(sum(subdataframe$Straining == 1), nrow(subdataframe), p=0)[c('estimate', 'conf.int')]));
+#     df2 <- t(unlist(binom.test(sum(subdataframe$Urgency == 1), nrow(subdataframe), p=0)[c('estimate', 'conf.int')]));
+#     df3 <- t(unlist(binom.test(sum(subdataframe$Postponement == 1), nrow(subdataframe), p=0)[c('estimate', 'conf.int')]));
+#     res <- data.frame(cbind(df1, df2, df3));
+#     names(res) <- c(paste0('Straining', c('est', 'lo', 'hi')),
+#                     paste0('Urgency', c('est', 'lo', 'hi')),
+#                     paste0('Postponement', c('est', 'lo', 'hi')),
+#     return(res);
+#    }));
+
+
+```
+
+
+# 4. What is the mean average of LUTS among individuals (aged 4-19yr) diagnosed withing the FASD spectrum in Poland?
+
+```{r}
+
+### Mean LUTS score
+pander(meanConfInt(dat$LUTS_Score)$output);
+
+
+```
+
+# 5. What is the mean average of HBD among individuals (aged 4-19yr) diagnosed withing the FASD spectrum in Poland?
+
+```{r}
+
+### Mean HBD score
+pander(meanConfInt(dat$HBD[complete.cases(dat$HBD)])$output);
+
+
+```
+
+# 6. What is the mean average of Apgar scale among individuals (aged 4-19yr) diagnosed withing the FASD spectrum in Poland?
+
+```{r}
+
+### Mean HBD score
+pander(meanConfInt(dat$AG[complete.cases(dat$AG)])$output);
+
+
+```
+# 7. What is the mean average of BMI among individuals (aged 4-19yr) diagnosed withing the FASD spectrum in Poland?
+
+```{r}
+
+### Mean BMI score
+pander(meanConfInt(dat$BMI[complete.cases(dat$BMI)])$output);
+
+
+```
+
+# 8. What is the mean average of OFC among individuals (aged 4-19yr) diagnosed withing the FASD spectrum in Poland?
+
+```{r}
+
+### Mean OFC score
+pander(meanConfInt(dat$OFC[complete.cases(dat$OFC)])$output);
+
+
+```
+
+# 9. What is the mean average of height among individuals (aged 4-19yr) diagnosed withing the FASD spectrum in Poland?
+
+```{r}
+
+### Mean Height score
+pander(meanConfInt(dat$Height_cm[complete.cases(dat$Height_cm)])$output);
+
+```
+
+# 10. What is the mean average of weight among individuals (aged 4-19yr) diagnosed withing the FASD spectrum in Poland?
+
+```{r}
+
+### Mean Weight score
+pander(meanConfInt(dat$Weight_kg[complete.cases(dat$Weight_kg)])$output);
+
+
+```
+
+# 11. What is the mean average of birthweight among individuals (aged 4-19yr) diagnosed withing the FASD spectrum in Poland?
+
+```{r}
+
+### Mean Birth_Weight score
+pander(meanConfInt(dat$Birth_Weight[complete.cases(dat$Birth_Weight)])$output);
+
+
+```
+
+# 12. What is the mean average IQ among individuals (aged 4-19yr) diagnosed withing the FASD spectrum in Poland?
+
+```{r}
+
+### Mean IQ score
+pander(meanConfInt(dat$IQ[complete.cases(dat$IQ)])$output);
+
+
+```
+
+# 13. Is there a sign. association between incontinence and gender?
+# 14. Is there a sign. association between incontinence and FASD diagnosis?
+# 15. Is there a sign. association between incontinence and medication use?
+# 16. Is there a sign. association between incontinence and IQ groups (<70, >70)?
+# 17. Is there a sign. association between incontinence and symptoms of Straining?
+# 18. Is there a sign. association between incontinence and symptoms of Urgency?
+# 19. Is there a sign. association between incontinence and symptoms of Postponement?
+# 20. Is there a sign. association between incontinence and Age?
+# 21. Is there a sign. association between incontinence and HBD?
+# 22. Is there a sign. association between incontinence and OFC?
+# 23. Is there a sign. association between incontinence and AG?
+# 24. Is there a sign. association between incontinence and birthweight?
+# 25. Is there a sign. association between incontinence and height?
+# 26. Is there a sign. association between incontinence and weight?
+# 27. Is there a sign. association between incontinence and IQ?
+# 28. Is there a sign. association between incontinence and BMI?
+# 29. Is there a sign. association between incontinence and BMI percentile?
+
+```{r}
+
+### Categorical associations 
+
+crossTab(dat$Incontinence_Overall, factor(dat$Age_Groups_Three));
+crossTab(dat$Incontinence_Overall, factor(dat$Age_Groups_Two));
+crossTab(dat$Incontinence_Overall, dat$Age_Groups_Two_excl);
+crossTab(dat$Incontinence_Overall, dat$Sex);
+crossTab(dat$Incontinence_Overall, dat$FASD_diagn);
+crossTab(dat$Incontinence_Overall, factor(dat$Medication));
+crossTab(dat$Incontinence_Overall, factor(dat$IQ_Groups));
+crossTab(dat$Incontinence_Overall, factor(dat$Q12));
+crossTab(dat$Incontinence_Overall, factor(dat$Q13));
+crossTab(dat$Incontinence_Overall, dat$Q14);
+
+
+tmp <- lapply(categoricalVariables, function(currentVar) {
+  cat("###", currentVar, "\n");
+  print(fisher.test(dat$Incontinence_Overall, dat[, currentVar]));
+});
+
+# fisher.test(dat$Incontinence_Overall, factor(dat$Age_Groups_Three));
+# fisher.test(dat$Incontinence_Overall, factor(dat$Age_Groups_Two));
+# fisher.test(dat$Incontinence_Overall, dat$Age_Groups_Two_excl);
+# fisher.test(dat$Incontinence_Overall, dat$Sex);
+# fisher.test(dat$Incontinence_Overall, dat$FASD_diagn);
+# fisher.test(dat$Incontinence_Overall, factor(dat$Medication));
+# fisher.test(dat$Incontinence_Overall, factor(dat$IQ_Groups));
+# fisher.test(dat$Incontinence_Overall, factor(dat$Q12));
+# fisher.test(dat$Incontinence_Overall, factor(dat$Q13));
+# fisher.test(dat$Incontinence_Overall, dat$Q14);
+
+### Numerical associations 
+
+meanDiff(dat$Age_Years ~ dat$Incontinence_Overall);
+meanDiff(dat$HBD ~ dat$Incontinence_Overall);
+meanDiff(dat$OFC ~ dat$Incontinence_Overall);
+meanDiff(dat$AG ~ dat$Incontinence_Overall);
+meanDiff(dat$Birth_Weight ~ dat$Incontinence_Overall);
+meanDiff(dat$Height_cm ~ dat$Incontinence_Overall);
+meanDiff(dat$Weight_kg ~ dat$Incontinence_Overall);
+meanDiff(dat$IQ ~ dat$Incontinence_Overall);
+meanDiff(dat$BMI ~ dat$Incontinence_Overall);
+#meanDiff(dat$BMI_percentile ~ dat$Incontinence_Overall);
+
+
+```
+
+# 30. Is there a sign. association between FASD diagnose and gender?
+# 31. Is there a sign. association between FASD diagnose and incontinence?
+# 32. Is there a sign. association between FASD diagnose and medication use?
+# 33. Is there a sign. association between FASD diagnose and IQ groups (<70, >70)?
+# 34. Is there a sign. association between FASD diagnose and symptoms of Straining?
+# 35. Is there a sign. association between FASD diagnose and symptoms of Urgency?
+# 36. Is there a sign. association between FASD diagnose and symptoms of Postponement?
+# 37. Is there a sign. association between FASD diagnose and Age?
+# 38. Is there a sign. association between FASD diagnose and HBD?
+# 39. Is there a sign. association between FASD diagnose and OFC?
+# 40. Is there a sign. association between FASD diagnose and AG?
+# 41. Is there a sign. association between FASD diagnose and birthweight?
+# 42. Is there a sign. association between FASD diagnose and height?
+# 43. Is there a sign. association between FASD diagnose and weight?
+# 44. Is there a sign. association between FASD diagnose and IQ?
+# 45. Is there a sign. association between FASD diagnose and BMI?
+# 46. Is there a sign. association between FASD diagnose and BMI percentile?
+
+
+```{r}
+
+### Categorical associations 
+
+crossTab(dat$Code_Diagn, dat$AgeGroups);
+crossTab(dat$Code_Diagn, dat$Sex);
+crossTab(dat$Code_Diagn, dat$Medication);
+crossTab(dat$Code_Diagn, dat$Q21);
+crossTab(dat$Code_Diagn, dat$Q13);
+crossTab(dat$Code_Diagn, dat$Q14);
+crossTab(dat$Code_Diagn, dat$Incontinence_Overall);
+
+tmp <- lapply(categoricalVariables, function(currentVar) {
+  cat("###", currentVar, "\n");
+  print(fisher.test(dat$Code_Diagn, dat[, currentVar]));
+});
+
+
+### Numerical associations 
+
+#oneway(dat$Age_Years, dat$FASD_diagn, means=TRUE, levene=TRUE, corrections=TRUE, plot=TRUE);
+
+oneway(dat$Age_Years, dat$Code_Diagn);
+oneway(dat$HBD, dat$Code_Diagn);
+oneway(dat$OFC, dat$Code_Diagn);
+oneway(dat$AG, dat$Code_Diagn);
+oneway(dat$Birth_Weight, dat$Code_Diagn);
+oneway(dat$Height_cm, dat$Code_Diagn);
+oneway(dat$Weight_kg, dat$Code_Diagn);
+oneway(dat$IQ, dat$Code_Diagn);
+oneway(dat$computeBMI, dat$Code_Diagn);
+#oneway(dat$BMI_percentile, dat$Code_Diagn);
+
+
+```
+
+
+# 47. Is there a sign. association between gender and FASD diagnose?
+# 48. Is there a sign. association between gender and incontinence?
+# 49. Is there a sign. association between gender and medication use?
+# 50. Is there a sign. association between gender and IQ groups (<70, >70)?
+# 51. Is there a sign. association between gender and symptoms of Straining?
+# 52. Is there a sign. association between gender and symptoms of Urgency?
+# 53. Is there a sign. association between gender and symptoms of Postponement?
+# 54. Is there a sign. association between gender and Age?
+# 55. Is there a sign. association between gender and HBD?
+# 56. Is there a sign. association between gender and OFC?
+# 57. Is there a sign. association between gender and AG?
+# 58. Is there a sign. association between gender and birthweight?
+# 59. Is there a sign. association between gender and height?
+# 60. Is there a sign. association between gender and weight?
+# 61. Is there a sign. association between gender and IQ?
+# 62. Is there a sign. association between gender and BMI?
+# 63. Is there a sign. association between gender and BMI percentile?
+
+
+```{r}
+
+### Categorical associations 
+
+#crossTab(dat$Sex, dat$AgeGroups);
+#crossTab(dat$Sex, dat$FASD);
+#crossTab(dat$Sex, dat$Medication);
+#crossTab(dat$Sex, dat$Q12);
+#crossTab(dat$Sex, dat$Q13);
+#crossTab(dat$Sex, dat$Q14);
+#crossTab(dat$Sex, dat$Incontinence_Overall);
+
+#tmp <- lapply(categoricalVariables, function(currentVar) {
+#  cat("###", currentVar, "\n");
+#  print(fisher.test(dat$Sex, dat[, currentVar]));
+#});
+
+
+### Numerical associations 
+
+#meanDiff(dat$Age_Years ~ dat$Sex);
+#meanDiff(dat$HBD ~ dat$Sex);
+#meanDiff(dat$OFC ~ dat$Sex);
+#meanDiff(dat$AG ~ dat$Sex);
+#meanDiff(dat$Birth_Weight ~ dat$Sex);
+#meanDiff(dat$Height_cm ~ dat$Sex);
+#meanDiff(dat$Weight_kg ~ dat$Sex);
+#meanDiff(dat$IQ ~ dat$Sex);
+#meanDiff(dat$BMI ~ dat$Sex);
+#meanDiff(dat$BMI_percentile ~ dat$Sex);
+
+
+```
+
+# 64. Is there a sign. association between age and FASD diagnose?
+# 65. Is there a sign. association between age and incontinence?
+# 66. Is there a sign. association between age and medication use?
+# 67. Is there a sign. association between age and IQ groups (<70, >70)?
+# 68. Is there a sign. association between age and symptoms of Straining?
+# 69. Is there a sign. association between age and symptoms of Urgency?
+# 70. Is there a sign. association between age and symptoms of Postponement?
+# 71. Is there a sign. association between age and gender?
+# 72. Is there a sign. association between age and HBD?
+# 73. Is there a sign. association between age and OFC?
+# 74. Is there a sign. association between age and AG?
+# 75. Is there a sign. association between age and birthweight?
+# 76. Is there a sign. association between age and height?
+# 77. Is there a sign. association between age and weight?
+# 78. Is there a sign. association between age and IQ?
+# 79. Is there a sign. association between age and BMI?
+# 80. Is there a sign. association between age and BMI percentile?
+
+```{r}
+
+### Age als continues variable with continues variables
+
+scatterPlot(dat$HBD, dat$Age_Years);
+cor.test(dat$HBD, dat$Age_Years);
+
+scatterPlot(dat$OFC, dat$Age_Years);
+cor.test(dat$OFC, dat$Age_Years);
+
+scatterplot(dat$AG, dat$Age_Years);
+cor.test(dat$AG, dat$Age_Years);
+
+scatterplot(dat$Birth_Weight, dat$Age_Years);
+cor.test(dat$Birth_Weight, dat$Age_Years);
+
+scatterplot(dat$Height_cm, dat$Age_Years);
+cor.test(dat$Height_cm, dat$Age_Years);
+
+scatterplot(dat$Weight_kg, dat$Age_Years);
+cor.test(dat$Weight_kg, dat$Age_Years);
+
+scatterplot(dat$IQ, dat$Age_Years);
+cor.test(dat$IQ, dat$Age_Years);
+
+scatterplot(dat$BMI, dat$Age_Years);
+cor.test(dat$BMI, dat$Age_Years);
+
+#scatterplot(dat$BMI_percentile, dat$Age_Years);
+#cor.test(dat$BMI_percentile, dat$Age_Years);
+
+
+### Age als continues variable with categorical (ordinal) variables.
+
+oneway(dat$Age_Years, dat$Sex, plot=TRUE);
+oneway(dat$Age_Years, dat$Medication, plot=TRUE);
+oneway(dat$Age_Years, dat$Code_Diagn, plot=TRUE);
+#oneway(dat$Age_Years, dat$Q12, plot=TRUE);
+oneway(dat$Age_Years, dat$Q13, plot=TRUE);
+oneway(dat$Age_Years, dat$Q14, plot=TRUE);
+
+
+# plot(dat$Sex ~ dat$Age_Years);
+# aov(dat$Medication ~ dat$Age_Years);
+# plot(dat$Medication ~ dat$Age_Years);
+# aov(dat$FASD_diagn ~ dat$Age_Years);
+# plot(dat$FASD_diagn ~ dat$Age_Years);
+# aov(dat$IQ_Groups ~ dat$Age_Years);
+# plot(dat$IQ_Groups ~ dat$Age_Years);
+# aov(dat$Straining ~ dat$Age_Years);
+# plot(dat$Straining ~ dat$Age_Years);
+# aov(dat$Urgency ~ dat$Age_Years);
+# plot(dat$Urgency ~ dat$Age_Years);
+# aov(dat$Postponement ~ dat$Age_Years);
+# plot(dat$Postponement ~ dat$Age_Years);
+
+```
+
+# Additional: correction for multiple testing
+
+```{r}
+
+## Correction for multiple testing
+
+pValues <- data.frame(p = c(.748,
+                            .986,
+                            .76,
+                            .325,
+                            .729,
+                            .072,
+                            .508,
+                            .66,
+                            .393,
+                            .199,
+                            .175,
+                            .883,
+                            .332,
+                            .162,
+                            .549,
+                            .153,
+                            .053,
+                            .618,
+                            .022,
+                            .028,
+                            .032,
+                            .007,
+                            .029,
+                            .248,
+                            .725,
+                            .951,
+                            .256,
+                            .249,
+                            .381,
+                            .729,
+                            .026,
+                            .477,
+                            .175,
+                            .409,
+                            .138,
+                            .029,
+                            .098,
+                            .722,
+                            .613,
+                            .194,
+                            .354,
+                            .754,
+                            .791,
+                            .248,
+                            .83,
+                            .692,
+                            .139,
+                            .22,
+                            .305,
+                            .325,
+                            .999,
+                            .535,
+                            .919,
+                            .304,
+                            .469,
+                            .899,
+                            .502,
+                            .281,
+                            .281,
+                            .487,
+                            .931,
+                            .000000001,
+                            .975,
+                            .304,
+                            .000000001,
+                            .000000001,
+                            .095,
+                            .000000001,
+                            .235,
+                            .999,
+                            .01,
+                            .026,
+                            .193,
+                            .388,
+                            .579));
+pValues$names <- c("association between Incontinence overall and Age Groups in 3 groups (children, adolescents, adults)",
+                   "association between Incontinence overall and Age Groups in 2 groups (children, adolescent incl adults)",
+                   "association between Incontinence overall and Age Groups in 2 groups (children and adolescents)",
+                   "association between Incontinence overall and Gender",
+                   "association between Incontinence overall and FASD diagnosis",
+                   "association between Incontinence overall and use of medication",
+                   "association between Incontinence overall and IQ groups <70 and >70",
+                   "association between Incontinence overall and Straining",
+                   "association between Incontinence overall and Postponement",
+                   "association between Incontinence overall and Urgency",
+                   "association between Incontinence overall and Age in years (continues variable)",
+                   "association between Incontinence overall and HBD",
+                   "association between Incontinence overall and OFC",
+                   "association between Incontinence overall and Apgar scale score",
+                   "association between Incontinence overall and Birth weight",
+                   "association between Incontinence overall and Height in cm",
+                   "association between Incontinence overall and Weight in kg",
+                   "association between Incontinence overall and IQ",
+                   "association between Incontinence overall and BMI",
+                   "association between Incontinence overall and BMI percentile",
+                   "association between FASD diagnosis and Age Groups in 3 groups (children, adolescents, adults)",
+                   "association between FASD diagnosis and Age Groups in 2 groups (children, adolescents incl adults)",
+                   "association between FASD diagnosis and Age Groups in 2 groups (children and adolescents)",
+                   "association between FASD diagnosis and Gender",
+                   "association between FASD diagnosis and use of medication",
+                   "association between FASD diagnosis and IQ groups <70 and >70",
+                   "association between FASD diagnosis and Straining",
+                   "association between FASD diagnosis and Postponement",
+                   "association between FASD diagnosis and Urgency",
+                   "association between FASD diagnosis and Incontinence overall",
+                   "association between FASD diagnosis and Age in years (continues variable)",
+                   "association between FASD diagnosis and HBD",
+                   "association between FASD diagnosis and OFC",
+                   "association between FASD diagnosis and Apgar scale score",
+                   "association between FASD diagnosis and Birth weight",
+                   "association between FASD diagnosis and Height in cm",
+                   "association between FASD diagnosis and Weight in kg",
+                   "association between FASD diagnosis and IQ",
+                   "association between FASD diagnosis and BMI",
+                   "association between FASD diagnosis and BMI percentile",
+                   "association between Gender and Age Groups in 3 groups (children, adolescents, adults)",
+                   "association between Gender and Age Groups in 2 groups (children, adolescent incl adults)",
+                   "association between Gender and Age Groups in 2 groups (children and adolescents)",
+                   "association between Gender and FASD diagnosis",
+                   "association between Gender and use of medication",
+                   "association between Gender and IQ groups <70 and >70",
+                   "association between Gender and Straining",
+                   "association between Gender and Postponement",
+                   "association between Gender and Urgency",
+                   "association between Gender and Incontinence overall",
+                   "association between Gender and Age in years (continues variable)",
+                   "association between Gender and HBD",
+                   "association between Gender and OFC",
+                   "association between Gender and Apgar scale score",
+                   "association between Gender and Birth weight",
+                   "association between Gender and Height in cm",
+                   "association between Gender and Weight in kg",
+                   "association between Gender and IQ",
+                   "association between Gender and BMI",
+                   "association between Gender and BMI percentile",
+                   "correlation between Age and HBD",
+                   "correlation between Age and OFC",
+                   "correlation between Age and Apgar scale score",
+                   "correlation between Age and Birth weight",
+                   "correlation between Age and Height in cm",
+                   "correlation between Age and Weight in kg",
+                   "correlation between Age and IQ",
+                   "correlation between Age and BMI",
+                   "correlation between Age and BMI percentile",
+                   "correlation between Age and gender",
+                   "correlation between Age and use of medication",
+                   "correlation between Age and FASD diagnosis",
+                   "correlation between Age and IQ groups <70 and >70",
+                   "correlation between Age and Urgency",
+                   "correlation between Age and Postponement");
+
+pValues$bonferroni <- p.adjust(pValues$p, method='bonferroni');
+pValues$holm <- p.adjust(pValues$p, method='holm');
+pValues$fdr <- p.adjust(pValues$p, method='fdr');
+
+pander(pValues[, c(2, 1, 3:ncol(pValues))]);
+
+
+
+```
+
+
+
+
+```{r}
+
+### Toevoegingen op basis van overleg dinsdag 2016-10-25
+
+### Convert all categorical variables into factors
+#categoricalVariables <- c('Sex');
+
+### Recode into categories,
+### convert into factor with labels,
+### and verify by comparing to original variable
+#dat$AgeGroups <- recode(dat$Age,
+#                        'lo:13=1 ; 13:18=2 ; 18:hi=3 ; else=NA');
+#dat$AgeGroups <- factor(dat$AgeGroups, levels=c(1,2,3),
+#                        labels=c('<13', '13-18', '>18'));
+#pander(table(dat$Age, dat$AgeGroups));
+
+
+
+#dat[, categoricalVariables] <- lapply(dat[, categoricalVariables, drop=FALSE], factor);
+
+# variablesForAssociationMatrix <- 
+#   c('Sex', 'Age', 'LUTS_Score', 'BMI', 'FASD_diagn', 'Straining', 'Postponement', 'Urgency', 'IQ_Groups', 'Incontinence_Overall';
+# 
+# pander(associationMatrix(dat[, variablesForAssociationMatrix], colNames=TRUE)$output$matrix$full);
+
+```
